@@ -14,13 +14,31 @@ if (args is not ([] or ["--demo"] or ["--dry-run"]))
 }
 
 bool demo = args is ["--demo"];
+Uri? webhook = null;
+if (args.Length == 0)
+{
+    var configuredUrl = Environment.GetEnvironmentVariable("SLACK_WEBHOOK_URL");
+    if (!string.IsNullOrWhiteSpace(configuredUrl))
+    {
+        if (!Uri.TryCreate(configuredUrl.Trim(), UriKind.Absolute, out webhook)
+            || webhook.Scheme != Uri.UriSchemeHttps
+            || webhook.Host is not ("hooks.slack.com" or "hooks.slack-gov.com")
+            || !webhook.IsDefaultPort || webhook.UserInfo.Length > 0
+            || !webhook.AbsolutePath.StartsWith("/services/", StringComparison.Ordinal))
+        {
+            Console.Error.WriteLine("SLACK_WEBHOOK_URL must be a valid Slack Incoming Webhook URL.");
+            return 2;
+        }
+    }
+}
+
 var now = DateTimeOffset.UtcNow;
 using var bulletinClient = demo ? new HttpClient(new SampleBulletin(now)) : new HttpClient();
 bulletinClient.Timeout = TimeSpan.FromSeconds(20);
 bulletinClient.DefaultRequestHeaders.UserAgent.ParseAdd("PipelineCurtailmentAlerts/1.0");
 
 Console.WriteLine($"Checking {SabineNoticeSource.PipelineName} ({(demo ? "sample replay" : "live bulletin")})...");
-Console.WriteLine("Delivery mode: preview");
+Console.WriteLine($"Delivery mode: {(webhook is null ? "preview" : "Slack")}");
 
 IReadOnlyList<Notice> notices;
 try
@@ -63,11 +81,37 @@ foreach (var signal in signals)
     Console.WriteLine($"  {(demo ? "Sample link" : "Full notice")}  {notice.Link.AbsoluteUri}");
 }
 
-return 0;
+if (webhook is null || signals.Length == 0)
+    return 0;
+
+using var slackClient = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
+{
+    Timeout = TimeSpan.FromSeconds(10)
+};
+var notifier = new SlackNotifier(slackClient, webhook);
+int sent = 0;
+
+foreach (var signal in signals)
+{
+    try
+    {
+        await notifier.SendAsync(signal);
+        sent++;
+    }
+    catch (InvalidOperationException ex)
+    {
+        Console.Error.WriteLine(ex.Message);
+    }
+}
+
+Console.WriteLine();
+Console.WriteLine($"Slack delivery: {sent} of {signals.Length} alert(s) sent.");
+return sent == signals.Length ? 0 : 1;
 
 static void PrintUsage()
 {
     Console.WriteLine("Usage: dotnet run --project src/PipelineAlerts -- [--demo | --dry-run]");
     Console.WriteLine("  --demo     Replay sample notices offline.");
     Console.WriteLine("  --dry-run  Read the live bulletin and preview alerts in the console.");
+    Console.WriteLine("  Default    Read the live bulletin and send alerts if SLACK_WEBHOOK_URL is set.");
 }
