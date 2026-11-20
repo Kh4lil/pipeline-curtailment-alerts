@@ -17,12 +17,14 @@ internal sealed class SampleBulletin(DateTimeOffset now) : HttpMessageHandler
         {
             ("notices.cfm", "?type=1") => Listing(
                 Row(now.AddHours(-2), 9001, 1, "Operational Alert", "Henry Hub compressor restriction"),
-                Row(now.AddHours(-8), 9002, 1, "Customer Services Update", "Shipper portal maintenance"),
                 Row(now.AddDays(-4), 9004, 1, "Operational Alert", "Older Louisiana outage")),
+            ("notices.cfm", "?type=2") => Listing(
+                Row(now.AddHours(-8), 9002, 2, "Customer Services Update", "Shipper portal maintenance")),
             ("notices.cfm", "?type=3") => Listing(
                 Row(now.AddDays(-1), 9003, 3, "Maintenance<br>Planned Service Outage", "Planned outage at Beaumont interconnect")),
+            ("notices.cfm", "?type=4" or "?type=5") => Listing(),
             ("notice_details_new.cfm", "?id=9001&type=1") => Detail("<iframe src=\"getNoticeText.cfm?id=9001\"></iframe>"),
-            ("notice_details_new.cfm", "?id=9002&type=1") => Detail(
+            ("notice_details_new.cfm", "?id=9002&type=2") => Detail(
                 "Routine portal maintenance for Louisiana shippers. Nomination services remain available."),
             ("notice_details_new.cfm", "?id=9003&type=3") => Detail(
                 "Affected segment: Beaumont, Texas<br>Flow will be restricted during the outage."),

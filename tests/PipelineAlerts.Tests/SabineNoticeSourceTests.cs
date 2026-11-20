@@ -27,7 +27,11 @@ public sealed class SabineNoticeSourceTests
                 Assert.Equal("https://www.gasnom.com/ip/SABINE/notice_details_new.cfm?id=9001&type=1", critical.Link.AbsoluteUri);
                 Assert.Contains("48,000 Dth/day", critical.Body);
             },
-            informational => Assert.Equal("Shipper portal maintenance", informational.Title),
+            informational =>
+            {
+                Assert.StartsWith("Non-Critical", informational.Type);
+                Assert.Equal("Shipper portal maintenance", informational.Title);
+            },
             planned =>
             {
                 Assert.Equal("Planned Service Outage / Maintenance", planned.Type);

@@ -29,7 +29,7 @@ A normal run with the variable set posts one message per match. A normal run wit
 
 ## How it works
 
-- **Fetch.** `SabineNoticeSource` reads the Critical and Planned Service Outage tables with `HttpClient` and Html Agility Pack, preserving the bulletin's notice types. It opens recent detail pages and reads their HTML or text PDFs with PdfPig. Board timestamps are interpreted as U.S. Central time. [Sabine bulletin](https://www.gasnom.com/ip/SABINE/)
+- **Fetch.** `SabineNoticeSource` reads all five public notice tables with `HttpClient` and Html Agility Pack, preserving categories and notice types. It opens recent detail pages and reads their HTML or text PDFs with PdfPig. Board timestamps are interpreted as U.S. Central time. [Sabine bulletin](https://www.gasnom.com/ip/SABINE/)
 - **Match.** `SignalDetector` requires a posting in the last 72 hours, a force majeure, outage, or curtailment keyword in the title or body, and location evidence of Louisiana, Henry Hub, Sabine, Gulf South, Columbia Gulf, or NGPL. It looks in the title, segment, and body for that evidence. It captures the first MMBtu or Dth quantity it finds, including a daily unit when present. [FERC Energy Markets Primer, figure 1-8](https://www.ferc.gov/sites/default/files/2024-01/24_Energy-Markets-Primer_0117_DIGITAL_0.pdf)
 - **Report.** `Program` prints the notice and match counts with a preview of each match. `SlackNotifier` sends the alert and reports delivery errors. A failed fetch or send returns a nonzero exit code.
 

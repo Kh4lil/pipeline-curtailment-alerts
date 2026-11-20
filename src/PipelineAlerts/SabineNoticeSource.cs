@@ -12,7 +12,14 @@ internal sealed class SabineNoticeSource(HttpClient httpClient)
     internal static readonly TimeZoneInfo BulletinTimeZone = TimeZoneInfo.FindSystemTimeZoneById("America/Chicago");
 
     private static readonly Uri Bulletin = new("https://www.gasnom.com/ip/SABINE/");
-    private static readonly (int Id, string Type)[] Categories = [(1, "Critical"), (3, "Planned Service Outage")];
+    private static readonly (int Id, string Type)[] Categories =
+    [
+        (1, "Critical"),
+        (2, "Non-Critical"),
+        (3, "Planned Service Outage"),
+        (4, "Waste Heat"),
+        (5, "Request to Purchase Releasable Capacity")
+    ];
 
     internal async Task<IReadOnlyList<Notice>> FetchAsync(
         DateTimeOffset since,
