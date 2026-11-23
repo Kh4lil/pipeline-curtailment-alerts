@@ -3,13 +3,13 @@ using System.Net.Http.Json;
 
 namespace PipelineAlerts;
 
-internal sealed class SlackNotifier(HttpClient httpClient, Uri webhookUrl)
+internal sealed class SlackNotifier(HttpClient httpClient, Uri webhookUrl, bool isDemo = false)
 {
     internal async Task SendAsync(TradingSignal signal, CancellationToken cancellationToken = default)
     {
         var payload = new
         {
-            text = FormatMessage(signal),
+            text = FormatMessage(signal, isDemo),
             unfurl_links = false,
             unfurl_media = false
         };
@@ -32,14 +32,16 @@ internal sealed class SlackNotifier(HttpClient httpClient, Uri webhookUrl)
         }
     }
 
-    internal static string FormatMessage(TradingSignal signal)
+    internal static string FormatMessage(TradingSignal signal, bool isDemo = false)
     {
         var notice = signal.Notice;
         var posted = notice.PostedAt.ToString("MMM d, yyyy HH:mm zzz", CultureInfo.InvariantCulture);
-        var source = Escape(notice.Link.AbsoluteUri.Replace("|", "%7C"));
+        var link = isDemo ? new Uri(notice.Link, ".") : notice.Link;
+        var source = Escape(link.AbsoluteUri.Replace("|", "%7C"));
+        var linkLabel = isDemo ? "Open Sabine bulletin" : "Open full notice";
         List<string> lines =
         [
-            "*Pipeline curtailment alert*",
+            isDemo ? "*DEMO ONLY · Synthetic pipeline curtailment alert*" : "*Pipeline curtailment alert*",
             Escape(notice.Title),
             $"*Pipeline* {Escape(notice.Pipeline)} · *Type* {Escape(notice.Type)}",
             $"*Match* {Escape(signal.Keyword)} · {Escape(signal.Area)}",
@@ -53,7 +55,7 @@ internal sealed class SlackNotifier(HttpClient httpClient, Uri webhookUrl)
         {
             lines.Add($"*Reported volume* {Escape(signal.Volume)}");
         }
-        lines.Add($"<{source}|Open full notice>");
+        lines.Add($"<{source}|{linkLabel}>");
         return string.Join('\n', lines);
     }
 

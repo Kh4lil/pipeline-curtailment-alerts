@@ -52,6 +52,27 @@ public class SlackNotifierTests
     }
 
     [Fact]
+    public async Task DemoPostLabelsSyntheticAlertAndLinksToRealBulletin()
+    {
+        var demoLink = new Uri("https://www.gasnom.com/ip/SABINE/notice_details_new.cfm?id=9001&type=1");
+        var signal = Signal with { Notice = Signal.Notice with { Link = demoLink } };
+        string? message = null;
+        using var client = new HttpClient(new StubHandler(async (request, cancellationToken) =>
+        {
+            using var payload = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
+            message = payload.RootElement.GetProperty("text").GetString();
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        }));
+
+        await new SlackNotifier(client, Webhook, isDemo: true).SendAsync(signal);
+
+        Assert.NotNull(message);
+        Assert.StartsWith("*DEMO ONLY · Synthetic pipeline curtailment alert*\n", message);
+        Assert.Contains("<https://www.gasnom.com/ip/SABINE/|Open Sabine bulletin>", message);
+        Assert.DoesNotContain("id=9001", message);
+    }
+
+    [Fact]
     public async Task RejectedNotificationReportsStatusWithoutWebhookOrResponseBody()
     {
         using var client = new HttpClient(new StubHandler((_, _) => Task.FromResult(

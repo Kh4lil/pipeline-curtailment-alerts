@@ -14,7 +14,7 @@ if (args is not ([] or ["--demo"] or ["--dry-run"]))
 }
 
 bool demo = args is ["--demo"];
-Uri? webhook = null;
+Uri? webhook = demo ? new Uri("https://slack.example.invalid/demo") : null;
 if (args.Length == 0)
 {
     var configuredUrl = Environment.GetEnvironmentVariable("SLACK_WEBHOOK_URL");
@@ -38,7 +38,7 @@ bulletinClient.Timeout = TimeSpan.FromSeconds(20);
 bulletinClient.DefaultRequestHeaders.UserAgent.ParseAdd("PipelineCurtailmentAlerts/1.0");
 
 Console.WriteLine($"Checking {SabineNoticeSource.PipelineName} ({(demo ? "sample replay" : "live bulletin")})...");
-Console.WriteLine($"Delivery mode: {(webhook is null ? "preview" : "Slack")}");
+Console.WriteLine($"Delivery mode: {(demo ? "simulated Slack" : webhook is null ? "preview" : "Slack")}");
 
 IReadOnlyList<Notice> notices;
 try
@@ -66,29 +66,32 @@ var signals = notices.Select(notice => SignalDetector.Match(notice, now)).OfType
 Console.WriteLine($"Found {notices.Count} recent notice(s).");
 Console.WriteLine($"Detected {signals.Length} trading signal(s).");
 
-foreach (var signal in signals)
+if (!demo)
 {
-    var notice = signal.Notice;
-    var posted = notice.PostedAt.ToString("MMM d, yyyy HH:mm zzz", CultureInfo.InvariantCulture);
-    Console.WriteLine();
-    Console.WriteLine($"  {notice.Type}  |  {notice.Title}");
-    Console.WriteLine($"  {notice.Pipeline}  |  Posted {posted}");
-    Console.WriteLine($"  Rule match   {signal.Keyword} + {signal.Area}");
-    if (notice.Location is { } location)
-        Console.WriteLine($"  Location     {location}");
-    if (signal.Volume is { } volume)
-        Console.WriteLine($"  Volume       {volume}");
-    Console.WriteLine($"  {(demo ? "Sample link" : "Full notice")}  {notice.Link.AbsoluteUri}");
+    foreach (var signal in signals)
+    {
+        var notice = signal.Notice;
+        var posted = notice.PostedAt.ToString("MMM d, yyyy HH:mm zzz", CultureInfo.InvariantCulture);
+        Console.WriteLine();
+        Console.WriteLine($"  {notice.Type}  |  {notice.Title}");
+        Console.WriteLine($"  {notice.Pipeline}  |  Posted {posted}");
+        Console.WriteLine($"  Rule match   {signal.Keyword} + {signal.Area}");
+        if (notice.Location is { } location)
+            Console.WriteLine($"  Location     {location}");
+        if (signal.Volume is { } volume)
+            Console.WriteLine($"  Volume       {volume}");
+        Console.WriteLine($"  Full notice  {notice.Link.AbsoluteUri}");
+    }
 }
 
 if (webhook is null || signals.Length == 0)
     return 0;
 
-using var slackClient = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
+using var slackClient = new HttpClient(demo ? new DemoSlackReceiver() : new HttpClientHandler { AllowAutoRedirect = false })
 {
     Timeout = TimeSpan.FromSeconds(10)
 };
-var notifier = new SlackNotifier(slackClient, webhook);
+var notifier = new SlackNotifier(slackClient, webhook, isDemo: demo);
 int sent = 0;
 
 foreach (var signal in signals)
@@ -105,13 +108,15 @@ foreach (var signal in signals)
 }
 
 Console.WriteLine();
-Console.WriteLine($"Slack delivery: {sent} of {signals.Length} alert(s) sent.");
+Console.WriteLine(demo
+    ? $"Simulated Slack delivery: {sent} of {signals.Length} alert(s) accepted."
+    : $"Slack delivery: {sent} of {signals.Length} alert(s) sent.");
 return sent == signals.Length ? 0 : 1;
 
 static void PrintUsage()
 {
     Console.WriteLine("Usage: dotnet run --project src/PipelineAlerts -- [--demo | --dry-run]");
-    Console.WriteLine("  --demo     Replay sample notices offline.");
+    Console.WriteLine("  --demo     Replay sample notices and show the outgoing Slack alert offline.");
     Console.WriteLine("  --dry-run  Read the live bulletin and preview alerts in the console.");
     Console.WriteLine("  Default    Read the live bulletin and send alerts if SLACK_WEBHOOK_URL is set.");
 }
