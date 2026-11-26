@@ -18,16 +18,25 @@ After the first build, replay the demo offline with `dotnet run --no-build --pro
 
 ## Send alerts to Slack
 
-1. In your [Slack app settings](https://api.slack.com/apps), enable Incoming Webhooks, select **Add New Webhook to Workspace**, and choose a channel. [Slack's setup guide](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/)
-2. Set `SLACK_WEBHOOK_URL` in your shell. In Bash or Zsh, paste the URL when `read` waits for input, then press Enter. The input is hidden.
+1. Create or open a Slack app in your workspace. Enable **Incoming Webhooks**, select **Add New Webhook**, and authorize it for a test channel. [Slack app settings](https://api.slack.com/apps) · [Slack's setup guide](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/)
+2. From the repo root, copy the template and set `SLACK_WEBHOOK_URL` in `.env` to your own webhook URL. Git ignores `.env`.
 
    ```sh
-   read -rs SLACK_WEBHOOK_URL
-   export SLACK_WEBHOOK_URL
-   dotnet run --project src/PipelineAlerts
+   test -e .env || cp .env.example .env
+   chmod 600 .env
    ```
 
-A normal run with the variable set posts one message per match. A normal run without it previews the alerts. Keep the webhook URL in an environment variable or secret store.
+3. In Bash or Zsh, load the file into the process environment for this run.
+
+   ```sh
+   (
+     . ./.env
+     export SLACK_WEBHOOK_URL
+     dotnet run --project src/PipelineAlerts
+   )
+   ```
+
+A configured run posts one message per qualifying live notice. If nothing qualifies, the console reports zero signals. Use `--demo` for a repeatable replay with simulated Slack delivery.
 
 ## How it works
 
