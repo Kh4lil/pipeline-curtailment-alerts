@@ -109,22 +109,28 @@ internal sealed class SabineNoticeSource(HttpClient httpClient)
             return label.Groups[1].Value.Trim();
         }
 
-        var meterTable = Regex.Match(body, """
-            ^[ \t]*Location(?:[ \t]+Name|:)[ \t]+Loc[ \t]*\#:?[ \t]*
+        var meterTables = Regex.Matches(body, """
+            ^[ \t]*(?:
+                Location(?:[ \t]+Name|:)[ \t]+Loc[ \t]*\#:?
+                | from\ the\ following\ mainline\ receipt\ points[^\r\n:]*:
+            )[ \t]*
             (?:
                 (?:\r?\n[ \t]*)+ (?:•[ \t]*)?
                 (?<name>[^\r\n]{1,100}?) [ \t]{2,} (?<meter>[0-9]+) [ \t]* \r?$
             )+
             """, RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.IgnorePatternWhitespace);
-        if (meterTable.Success)
+        if (meterTables.Count > 0)
         {
-            var meters = meterTable.Groups["meter"].Captures;
-            return string.Join(" / ", meterTable.Groups["name"].Captures.Select((name, index) =>
-                FormatMeter(name.Value, meters[index].Value)));
+            return FormatMeters(meterTables);
         }
 
-        var proseLocation = Regex.Match(body,
-            @"(?i:\b(?:in|at|near))[ \t]+(?<location>\p{Lu}[\p{L}.'’-]*(?:[ \t]+\p{Lu}[\p{L}.'’-]*){0,3},[ \t]*(?:LA|TX|(?i:Louisiana|Texas)))\b(?![-/]\w)");
+        var proseLocation = Regex.Match(body, """
+            (?i:\b(?:in|at|near))[ \t]+
+            (?:
+                (?<location>\p{Lu}[\p{L}.'’-]*(?:[ \t]+\p{Lu}[\p{L}.'’-]*){0,3},[ \t]*(?:LA|TX|(?i:Louisiana|Texas)))\b(?![-/]\w)
+                | (?i:the)[ \t]+(?<location>(?:\p{Lu}[\p{L}.'’-]*[ \t]+){1,4}Interconnect)\b
+            )
+            """, RegexOptions.IgnorePatternWhitespace);
         if (proseLocation.Success)
         {
             return Regex.Replace(proseLocation.Groups["location"].Value, @"[ \t]+", " ");
@@ -140,9 +146,7 @@ internal sealed class SabineNoticeSource(HttpClient httpClient)
             """, RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.IgnorePatternWhitespace);
         if (locationRows.Count > 0)
         {
-            return string.Join(" / ", locationRows.SelectMany(row =>
-                row.Groups["name"].Captures.Select((name, index) =>
-                    FormatMeter(name.Value, row.Groups["meter"].Captures[index].Value))));
+            return FormatMeters(locationRows);
         }
 
         var namedPlace = Regex.Match(title + "\n" + body,
@@ -151,8 +155,12 @@ internal sealed class SabineNoticeSource(HttpClient httpClient)
         return namedPlace.Success ? Regex.Replace(namedPlace.Value, @"\s+", " ") : null;
     }
 
-    private static string FormatMeter(string name, string meter) =>
-        $"{Regex.Replace(name.Trim(), @"[ \t]+", " ")} (meter {meter})";
+    private static string FormatMeters(MatchCollection rows) =>
+        string.Join(" / ", rows.SelectMany(row => row.Groups["name"].Captures.Select((name, index) =>
+        {
+            var location = Regex.Replace(name.Value.Trim(), @"[ \t]+", " ");
+            return $"{location} (meter {row.Groups["meter"].Captures[index].Value})";
+        })));
 
     private static Uri NoticeLink(string href, string file)
     {

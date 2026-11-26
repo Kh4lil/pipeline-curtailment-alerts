@@ -62,7 +62,11 @@ public sealed class SabineNoticeSourceTests
         if (multipleRows)
         {
             page.AddText("• Trunkline Holmwood  482116", 12, new PdfPoint(40, 710), font);
-            expected += " / Trunkline Holmwood (meter 482116)";
+            page.AddText("Receipt capacity is restricted to 85,000 Dth/d", 12, new PdfPoint(40, 690), font);
+            page.AddText("from the following mainline receipt points for deliveries to Henry Hub (IHT):", 12, new PdfPoint(40, 670), font);
+            page.AddText("• HPL - High Pressure   693157", 12, new PdfPoint(40, 650), font);
+            page.AddText("• Centana - Jefferson   23757", 12, new PdfPoint(40, 630), font);
+            expected += " / Trunkline Holmwood (meter 482116) / HPL - High Pressure (meter 693157) / Centana - Jefferson (meter 23757)";
         }
 
         var now = new DateTimeOffset(2026, 7, 8, 12, 30, 0, TimeSpan.Zero);
@@ -122,19 +126,21 @@ public sealed class SabineNoticeSourceTests
             notices.Where(notice => notice.Type.StartsWith("Critical", StringComparison.Ordinal)).Select(notice => notice.PostedAt));
     }
 
-    [Fact]
-    public async Task ReadsCityAndStateFromNoticeProse()
+    [Theory]
+    [InlineData("An outage at the Gillis Compressor Station in Starks, LA reduced deliveries by 12,000 Dth/day.", "Starks, LA")]
+    [InlineData("An outage is restricting flows at the Beaumont Interconnect. The outage affects Texas deliveries.", "Beaumont Interconnect")]
+    public async Task ReadsLocationFromNoticeProse(string body, string expected)
     {
         var now = new DateTimeOffset(2026, 11, 25, 18, 0, 0, TimeSpan.Zero);
         using var client = new HttpClient(new BulletinOverride(new SampleBulletin(now), uri =>
             uri.Query == "?id=9002&type=2"
-                ? Detail("An outage at the Gillis Compressor Station in Starks, LA reduced deliveries by 12,000 Dth/day.")
+                ? Detail(body)
                 : null));
 
         var notices = await new SabineNoticeSource(client).FetchAsync(now.AddDays(-3), now);
 
         var notice = Assert.Single(notices, notice => notice.Link.Query == "?id=9002&type=2");
-        Assert.Equal("Starks, LA", notice.Location);
+        Assert.Equal(expected, notice.Location);
     }
 
     [Fact]

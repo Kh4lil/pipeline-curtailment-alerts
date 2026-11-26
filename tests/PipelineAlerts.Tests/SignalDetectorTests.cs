@@ -34,6 +34,16 @@ public class SignalDetectorTests
     }
 
     [Theory]
+    [InlineData("SONAT - HH (meter 46786)", "SONAT - HH")]
+    [InlineData("SONAT - TX", null)]
+    public void RecognizesTheSouthernNaturalHenryHubMeterLabel(string location, string? expectedArea)
+    {
+        var notice = CreateNotice("A compressor outage was confirmed.", location);
+
+        Assert.Equal(expectedArea, SignalDetector.Match(notice, Now)?.Area);
+    }
+
+    [Theory]
     [InlineData("Lake Charles, Louisiana")]
     [InlineData("Lake Charles, LA")]
     public void RecognizesBothSpellingsInTheBodyOrLocation(string location)
@@ -62,7 +72,8 @@ public class SignalDetectorTests
     [Fact]
     public void FindsAnAffirmativeEventAfterANegatedKeyword()
     {
-        var notice = CreateNotice("No outage is expected at Henry Hub, but a curtailment was confirmed.");
+        var notice = CreateNotice("No outage is expected at Henry Hub, but a curtailment was confirmed.")
+            with { Title = "Henry Hub outage update" };
 
         Assert.Equal("curtailment", SignalDetector.Match(notice, Now)?.Keyword);
     }
@@ -72,7 +83,9 @@ public class SignalDetectorTests
     [InlineData("Hub operations update", "Affected segment: Henry Hub\nThe outage has ended. All flows have returned to normal.", "Henry Hub")]
     [InlineData("Henry Hub outage", "The outage has ended.", "Henry Hub")]
     [InlineData("Henry Hub outage notice", "The outage was canceled.", "Henry Hub")]
-    public void IgnoresAnExplicitlyResolvedEvent(string title, string body, string? location)
+    [InlineData("Henry Hub outage update", "No outage is expected at Henry Hub.", "Henry Hub")]
+    [InlineData("Force majeure lifted at Henry Hub", "Normal flows have resumed.", "Henry Hub")]
+    public void IgnoresAnExplicitlyDeniedOrResolvedEvent(string title, string body, string? location)
     {
         var notice = CreateNotice(body, location) with { Title = title };
 

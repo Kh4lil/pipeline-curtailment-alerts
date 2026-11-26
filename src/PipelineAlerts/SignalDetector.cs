@@ -9,8 +9,8 @@ internal static class SignalDetector
     private const RegexOptions MatchOptions = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
 
     private static readonly Regex Keywords = new(
-        @"(?<!\bno[ \t]+)\b(?<evidence>force\s+majeure|outages?|curtailments?)\b"
-        + @"(?<dismissed>[ \t]+(?:(?:has|have)[ \t]+ended|(?:(?:has|have)[ \t]+been|was|were)[ \t]+(?:resolved|lifted|cancelled|canceled))\b)?",
+        @"(?<dismissed>\bno[ \t]+)?\b(?<evidence>force\s+majeure|outages?|curtailments?)\b"
+        + @"(?<dismissed>[ \t]+(?:(?:has|have)[ \t]+ended|(?:(?:has|have)[ \t]+been|was|were)[ \t]+(?:resolved|lifted|cancelled|canceled)|lifted)\b)?",
         MatchOptions);
 
     private static readonly Regex IssuerHeading = new(
@@ -18,7 +18,7 @@ internal static class SignalDetector
         MatchOptions | RegexOptions.Multiline);
 
     private static readonly Regex Areas = new(
-        @"(?<evidence>\b(?:Louisiana|Henry\s+Hub|Sabine\s+Pipe\s*Line|Bridgeline\s+East|Columbia\s+Gulf|Gulf\s*South|NGPL|Natural\s+Gas\s+Pipeline\s+Company\s+of\s+America)\b|(?<=\p{L},)[ \t]*(?<postal>(?-i:LA))\b(?![-/]\w))"
+        @"(?<evidence>\b(?:Louisiana|Henry\s+Hub|Sabine\s+Pipe\s*Line|Bridgeline\s+East|SONAT\s*[-–—]\s*HH|Columbia\s+Gulf|Gulf\s*South|NGPL|Natural\s+Gas\s+Pipeline\s+Company\s+of\s+America)\b|(?<=\p{L},)[ \t]*(?<postal>(?-i:LA))\b(?![-/]\w))"
         + @"(?<dismissed>[ \t]+(?:(?:deliveries|flows|operations|service)[ \t]+)?(?:is|are|remains?)[ \t]+unaffected\b)?",
         MatchOptions);
 
