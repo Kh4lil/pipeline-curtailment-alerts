@@ -74,6 +74,26 @@ public sealed class SabineNoticeSourceTests
     }
 
     [Fact]
+    public async Task ReadsExplicitLocationIdsFromBothPdfColumns()
+    {
+        var builder = new PdfDocumentBuilder();
+        var font = builder.AddStandard14Font(Standard14Font.Helvetica);
+        var page = builder.AddPage(PageSize.A4);
+        page.AddText("Acadian- HH (Loc 11203)        NGPL- HH (Loc 44949)", 12, new PdfPoint(40, 750), font);
+        page.AddText("Gulf South- HH (Loc 112564)   Trunkline Rec LP- HH (Loc 11200)", 12, new PdfPoint(40, 730), font);
+        page.AddText("Capacity is reduced (meter #s 847121, 2441).", 12, new PdfPoint(40, 710), font);
+
+        var now = new DateTimeOffset(2026, 9, 3, 18, 0, 0, TimeSpan.Zero);
+        using var client = new HttpClient(new BulletinOverride(new SampleBulletin(now),
+            uri => uri.Query == "?id=9001" ? Pdf(builder.Build()) : null));
+
+        var notices = await new SabineNoticeSource(client).FetchAsync(now.AddDays(-3), now);
+
+        Assert.Equal("Acadian- HH (meter 11203) / NGPL- HH (meter 44949) / Gulf South- HH (meter 112564) / Trunkline Rec LP- HH (meter 11200)",
+            notices.First().Location);
+    }
+
+    [Fact]
     public async Task SkipsFutureAndStaleDetailsAndIncludesBothWindowEndpoints()
     {
         var now = new DateTimeOffset(2026, 11, 25, 18, 0, 0, TimeSpan.Zero);

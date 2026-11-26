@@ -120,10 +120,7 @@ internal sealed class SabineNoticeSource(HttpClient httpClient)
         {
             var meters = meterTable.Groups["meter"].Captures;
             return string.Join(" / ", meterTable.Groups["name"].Captures.Select((name, index) =>
-            {
-                var location = Regex.Replace(name.Value.Trim(), @"[ \t]+", " ");
-                return $"{location} (meter {meters[index].Value})";
-            }));
+                FormatMeter(name.Value, meters[index].Value)));
         }
 
         var proseLocation = Regex.Match(body,
@@ -133,11 +130,29 @@ internal sealed class SabineNoticeSource(HttpClient httpClient)
             return Regex.Replace(proseLocation.Groups["location"].Value, @"[ \t]+", " ");
         }
 
+        var locationRows = Regex.Matches(body, """
+            ^[ \t]*(?:•[ \t]*)?
+            (?:
+                (?<name>[\p{L}\p{N}][\p{L}\p{N} .&'’/–-]{0,99}?) [ \t]+ \(Loc[ \t]+(?<meter>[0-9]+)\)
+                (?:[ \t]{2,}|(?=[ \t]*\r?$))
+            )+
+            [ \t]*\r?$
+            """, RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.IgnorePatternWhitespace);
+        if (locationRows.Count > 0)
+        {
+            return string.Join(" / ", locationRows.SelectMany(row =>
+                row.Groups["name"].Captures.Select((name, index) =>
+                    FormatMeter(name.Value, row.Groups["meter"].Captures[index].Value))));
+        }
+
         var namedPlace = Regex.Match(title + "\n" + body,
             @"\b(?:Henry\s+Hub|Lake\s+Charles|Jefferson\s+Island|Bridgeline\s+East|Calcasieu|Vermilion|Egan|Louisiana)\b",
             RegexOptions.IgnoreCase);
         return namedPlace.Success ? Regex.Replace(namedPlace.Value, @"\s+", " ") : null;
     }
+
+    private static string FormatMeter(string name, string meter) =>
+        $"{Regex.Replace(name.Trim(), @"[ \t]+", " ")} (meter {meter})";
 
     private static Uri NoticeLink(string href, string file)
     {

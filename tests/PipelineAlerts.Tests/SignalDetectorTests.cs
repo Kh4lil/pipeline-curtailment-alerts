@@ -67,6 +67,51 @@ public class SignalDetectorTests
         Assert.Equal("curtailment", SignalDetector.Match(notice, Now)?.Keyword);
     }
 
+    [Theory]
+    [InlineData("Operations update", "The Henry Hub outage has ended. All flows have returned to normal.", null)]
+    [InlineData("Hub operations update", "Affected segment: Henry Hub\nThe outage has ended. All flows have returned to normal.", "Henry Hub")]
+    [InlineData("Henry Hub outage", "The outage has ended.", "Henry Hub")]
+    [InlineData("Henry Hub outage notice", "The outage was canceled.", "Henry Hub")]
+    public void IgnoresAnExplicitlyResolvedEvent(string title, string body, string? location)
+    {
+        var notice = CreateNotice(body, location) with { Title = title };
+
+        Assert.Null(SignalDetector.Match(notice, Now));
+    }
+
+    [Theory]
+    [InlineData("Affected segment: Beaumont, Texas. Henry Hub deliveries are unaffected.", null)]
+    [InlineData("Affected segment: Beaumont, Texas\nAn outage affects only the Beaumont lateral. Henry Hub deliveries are unaffected.", "Beaumont, Texas")]
+    [InlineData("An outage affects only the Beaumont lateral. Henry Hub deliveries are unaffected.", "Henry Hub")]
+    public void IgnoresAnExplicitlyUnaffectedMarket(string body, string? location)
+    {
+        var notice = CreateNotice(body, location) with { Title = "Beaumont outage" };
+
+        Assert.Null(SignalDetector.Match(notice, Now));
+    }
+
+    [Fact]
+    public void KeepsAnActiveCurtailmentAfterAnEarlierOutageEnded()
+    {
+        var notice = CreateNotice(
+            "The earlier outage has ended. A new curtailment at Henry Hub is now reducing deliveries.")
+            with { Title = "Louisiana outage" };
+
+        var signal = Assert.IsType<TradingSignal>(SignalDetector.Match(notice, Now));
+        Assert.Equal("curtailment", signal.Keyword);
+    }
+
+    [Fact]
+    public void KeepsADifferentMarketWhenHenryHubIsUnaffected()
+    {
+        var notice = CreateNotice(
+            "Henry Hub deliveries are unaffected. A new curtailment at Gulf South is reducing deliveries.",
+            "Henry Hub");
+
+        var signal = Assert.IsType<TradingSignal>(SignalDetector.Match(notice, Now));
+        Assert.Equal("Gulf South", signal.Area);
+    }
+
     [Fact]
     public void DoesNotTreatTheIssuerHeadingAsEvidenceForATexasOnlyEvent()
     {

@@ -9,14 +9,17 @@ internal static class SignalDetector
     private const RegexOptions MatchOptions = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
 
     private static readonly Regex Keywords = new(
-        @"(?<!\bno[ \t]+)\b(?:force\s+majeure|outages?|curtailments?)\b", MatchOptions);
+        @"(?<!\bno[ \t]+)\b(?<evidence>force\s+majeure|outages?|curtailments?)\b"
+        + @"(?<dismissed>[ \t]+(?:(?:has|have)[ \t]+ended|(?:(?:has|have)[ \t]+been|was|were)[ \t]+(?:resolved|lifted|cancelled|canceled))\b)?",
+        MatchOptions);
 
     private static readonly Regex IssuerHeading = new(
         @"^[ \t]*Sabine[ \t]+Pipe[ \t]*Line(?:,?[ \t]+LLC)?\.?[ \t]*\r?$",
         MatchOptions | RegexOptions.Multiline);
 
     private static readonly Regex Areas = new(
-        @"\b(?:Louisiana|Henry\s+Hub|Sabine\s+Pipe\s*Line|Bridgeline\s+East|Columbia\s+Gulf|Gulf\s*South|NGPL|Natural\s+Gas\s+Pipeline\s+Company\s+of\s+America)\b|(?<=\p{L},)[ \t]*(?<postal>(?-i:LA))\b(?![-/]\w)",
+        @"(?<evidence>\b(?:Louisiana|Henry\s+Hub|Sabine\s+Pipe\s*Line|Bridgeline\s+East|Columbia\s+Gulf|Gulf\s*South|NGPL|Natural\s+Gas\s+Pipeline\s+Company\s+of\s+America)\b|(?<=\p{L},)[ \t]*(?<postal>(?-i:LA))\b(?![-/]\w))"
+        + @"(?<dismissed>[ \t]+(?:(?:deliveries|flows|operations|service)[ \t]+)?(?:is|are|remains?)[ \t]+unaffected\b)?",
         MatchOptions);
 
     private static readonly Regex Volumes = new(
@@ -28,20 +31,35 @@ internal static class SignalDetector
         if (notice.PostedAt < now - Lookback || notice.PostedAt > now)
             return null;
 
-        string text = $"{notice.Title}\n{notice.Body}";
-        var keyword = Keywords.Match(text);
+        var keyword = FindEvidence(Keywords, notice.Title, notice.Body);
         var bodyWithoutHeading = IssuerHeading.Replace(notice.Body, "");
-        var area = Areas.Match($"{notice.Title}\n{notice.Location}\n{bodyWithoutHeading}");
-        if (!keyword.Success || !area.Success)
+        var area = FindEvidence(Areas, $"{notice.Title}\n{notice.Location}", bodyWithoutHeading);
+        if (keyword is null || area is null)
             return null;
 
-        var volume = Volumes.Match(text);
+        var volume = Volumes.Match($"{notice.Title}\n{notice.Body}");
         return new TradingSignal(
             notice,
-            Normalize(keyword.Value),
-            area.Groups["postal"].Success ? "Louisiana" : Normalize(area.Value),
+            keyword,
+            area,
             volume.Success ? Normalize(volume.Value) : null);
     }
+
+    private static string? FindEvidence(Regex pattern, string summary, string body)
+    {
+        var bodyMatches = pattern.Matches(body);
+        var dismissed = bodyMatches.Where(match => match.Groups["dismissed"].Success)
+            .Select(EvidenceText).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // The notice body can disqualify a bare mention repeated in the title or extracted location.
+        var eligible = pattern.Matches(summary).FirstOrDefault(match =>
+            !match.Groups["dismissed"].Success && !dismissed.Contains(EvidenceText(match)))
+            ?? bodyMatches.FirstOrDefault(match => !match.Groups["dismissed"].Success);
+        return eligible is null ? null : EvidenceText(eligible);
+    }
+
+    private static string EvidenceText(Match match) =>
+        match.Groups["postal"].Success ? "Louisiana" : Normalize(match.Groups["evidence"].Value);
 
     private static string Normalize(string value) => Regex.Replace(value, @"\s+", " ");
 }
