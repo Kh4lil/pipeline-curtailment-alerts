@@ -72,7 +72,7 @@ public class SignalDetectorTests
     [Fact]
     public void FindsAnAffirmativeEventAfterANegatedKeyword()
     {
-        var notice = CreateNotice("No outage is expected at Henry Hub, but a curtailment was confirmed.")
+        var notice = CreateNotice("No outages are expected at Henry Hub, but a curtailment was confirmed.")
             with { Title = "Henry Hub outage update" };
 
         Assert.Equal("curtailment", SignalDetector.Match(notice, Now)?.Keyword);
@@ -84,6 +84,9 @@ public class SignalDetectorTests
     [InlineData("Henry Hub outage", "The outage has ended.", "Henry Hub")]
     [InlineData("Henry Hub outage notice", "The outage was canceled.", "Henry Hub")]
     [InlineData("Henry Hub outage update", "No outage is expected at Henry Hub.", "Henry Hub")]
+    [InlineData("Henry Hub outage update", "No outages are expected at Henry Hub.", "Henry Hub")]
+    [InlineData("Henry Hub outages update", "No outage is expected at Henry Hub.", "Henry Hub")]
+    [InlineData("Henry Hub curtailment update", "No curtailments are expected at Henry Hub.", "Henry Hub")]
     [InlineData("Force majeure lifted at Henry Hub", "Normal flows have resumed.", "Henry Hub")]
     public void IgnoresAnExplicitlyDeniedOrResolvedEvent(string title, string body, string? location)
     {
