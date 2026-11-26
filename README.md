@@ -82,7 +82,10 @@ The runner loads `.env` when present and uses `--scheduled .pipeline-alert-deliv
 
 ### Technical choices
 
-A single C# console app gives manual and scheduled runs the same entry point. Html Agility Pack reads bulletin tables, and PdfPig extracts text from attached PDFs. Hardcoded rules make each alert traceable to a keyword and location. A Slack incoming webhook handles one-way delivery over HTTP.
+- **Run one check at a time.** The C# app fetches, matches, and sends in a single invocation. Manual runs and cron use the same entry point, which keeps polling cadence outside the app.
+- **Keep bulletin parsing separate from trading rules.** `SabineNoticeSource` uses Html Agility Pack and PdfPig to turn bulletin HTML and PDF text into a `Notice`. It checks the posting time on the listing first to avoid downloading details outside the 72-hour window. `SignalDetector` takes a notice and a reference time, so historical replays and date-boundary tests exercise the same rules as a live run.
+- **Show why an alert matters.** The hardcoded rules require both disruption and market evidence. The Slack alert shows the match and links to the exact notice so a trader can check the affected segment and see what the reported volume represents.
+- **Limit delivery attempts.** A transient bulletin read can be retried once. Each Slack send gets one attempt per run because a timeout can leave delivery uncertain. Scheduled checks record confirmed deliveries by notice revision so overlapping 72-hour windows can skip alerts already sent.
 
 The keyword rules skip direct denials and explicit resolutions such as “force majeure lifted.” A denial in the notice body can override the headline. For example, “no outages” dismisses “outage” in the headline. Geography checks ignore standalone Sabine letterhead and phrases such as “Henry Hub deliveries are unaffected.” The checks use specific phrases, so wording such as “flow restricted” still needs a qualifying keyword. A quoted quantity can be remaining capacity or the size of a cut. The full notice provides that context.
 
