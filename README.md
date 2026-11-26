@@ -12,7 +12,9 @@ dotnet run --project src/PipelineAlerts -- --dry-run
 dotnet test
 ```
 
-Start the review with `--demo`. Three recent sample notices go through the same parser, rules, and Slack sender as a live run. A local receiver prints the outgoing Henry Hub alert, including 48,000 Dth/day extracted from a PDF, then simulates Slack's acknowledgement. The replay works offline after the initial build and needs no Slack credentials. Use `--dry-run` to show the live public bulletin in preview mode.
+Start the review with `--demo`. Three recent sample notices go through the same parser, rules, and Slack sender as a live run. A local receiver prints the one matching Henry Hub alert, including 48,000 Dth/day extracted from a PDF, then simulates Slack's acknowledgement. Use `--dry-run` to see the live bulletin and its current match count in preview mode.
+
+After the first build, replay the demo offline with `dotnet run --no-build --project src/PipelineAlerts -- --demo`. The replay uses no Slack credentials.
 
 ## Send alerts to Slack
 

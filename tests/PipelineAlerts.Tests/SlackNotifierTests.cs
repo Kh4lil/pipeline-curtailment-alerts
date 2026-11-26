@@ -54,8 +54,13 @@ public class SlackNotifierTests
     [Fact]
     public async Task DemoPostLabelsSyntheticAlertAndLinksToRealBulletin()
     {
-        var demoLink = new Uri("https://www.gasnom.com/ip/SABINE/notice_details_new.cfm?id=9001&type=1");
-        var signal = Signal with { Notice = Signal.Notice with { Link = demoLink } };
+        var now = new DateTimeOffset(2026, 11, 20, 18, 0, 0, TimeSpan.Zero);
+        using var bulletinClient = new HttpClient(new SampleBulletin(now));
+        var notices = await new SabineNoticeSource(bulletinClient).FetchAsync(now - SignalDetector.Lookback);
+
+        Assert.Equal(3, notices.Count);
+        var signal = Assert.Single(notices.Select(notice => SignalDetector.Match(notice, now)).OfType<TradingSignal>());
+
         string? message = null;
         using var client = new HttpClient(new StubHandler(async (request, cancellationToken) =>
         {
@@ -68,6 +73,8 @@ public class SlackNotifierTests
 
         Assert.NotNull(message);
         Assert.StartsWith("*DEMO ONLY · Synthetic pipeline curtailment alert*\n", message);
+        Assert.Contains("*Match* outage · Henry Hub", message);
+        Assert.Contains("*Reported volume* 48,000 Dth/day", message);
         Assert.Contains("<https://www.gasnom.com/ip/SABINE/|Open Sabine bulletin>", message);
         Assert.DoesNotContain("id=9001", message);
     }

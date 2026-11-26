@@ -2,7 +2,9 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using HtmlAgilityPack;
 using UglyToad.PdfPig;
+using UglyToad.PdfPig.Core;
 using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
+using UglyToad.PdfPig.Exceptions;
 
 namespace PipelineAlerts;
 
@@ -86,8 +88,15 @@ internal sealed class SabineNoticeSource(HttpClient httpClient)
         }
 
         var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-        using var pdf = PdfDocument.Open(bytes);
-        return string.Join("\n", pdf.GetPages().Select(page => ContentOrderTextExtractor.GetText(page)));
+        try
+        {
+            using var pdf = PdfDocument.Open(bytes);
+            return string.Join("\n", pdf.GetPages().Select(page => ContentOrderTextExtractor.GetText(page)));
+        }
+        catch (Exception ex) when (ex is PdfDocumentFormatException or PdfDocumentEncryptedException)
+        {
+            throw new InvalidDataException($"Sabine notice {notice.Query} contains an unreadable PDF attachment.", ex);
+        }
     }
 
     private static string? ReadLocation(string title, string body)
