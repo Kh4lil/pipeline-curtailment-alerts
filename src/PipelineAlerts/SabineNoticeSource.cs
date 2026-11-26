@@ -108,6 +108,23 @@ internal sealed class SabineNoticeSource(HttpClient httpClient)
             return label.Groups[1].Value.Trim();
         }
 
+        var meterTable = Regex.Match(body, """
+            ^[ \t]*Location(?:[ \t]+Name|:)[ \t]+Loc[ \t]*\#:?[ \t]*
+            (?:
+                (?:\r?\n[ \t]*)+ (?:•[ \t]*)?
+                (?<name>[^\r\n]{1,100}?) [ \t]{2,} (?<meter>[0-9]+) [ \t]* \r?$
+            )+
+            """, RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.IgnorePatternWhitespace);
+        if (meterTable.Success)
+        {
+            var meters = meterTable.Groups["meter"].Captures;
+            return string.Join(" / ", meterTable.Groups["name"].Captures.Select((name, index) =>
+            {
+                var location = Regex.Replace(name.Value.Trim(), @"[ \t]+", " ");
+                return $"{location} (meter {meters[index].Value})";
+            }));
+        }
+
         var namedPlace = Regex.Match(title + "\n" + body,
             @"\b(?:Henry\s+Hub|Lake\s+Charles|Jefferson\s+Island|Bridgeline\s+East|Calcasieu|Vermilion|Egan|Louisiana)\b",
             RegexOptions.IgnoreCase);

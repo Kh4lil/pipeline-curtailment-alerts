@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Http.Headers;
 using PipelineAlerts;
+using UglyToad.PdfPig.Content;
 using UglyToad.PdfPig.Core;
+using UglyToad.PdfPig.Fonts.Standard14Fonts;
+using UglyToad.PdfPig.Writer;
 using Xunit;
 
 namespace PipelineAlerts.Tests;
@@ -43,11 +46,38 @@ public sealed class SabineNoticeSourceTests
             });
     }
 
+    [Theory]
+    [InlineData("GULF SOUTH - HH", "112564", false)]
+    [InlineData("SONAT - HH", "46786", false)]
+    [InlineData("KM Texas - High", "463541", true)]
+    public async Task ReadsLocationAndMeterFromSabinePdfTable(string location, string meter, bool multipleRows)
+    {
+        var builder = new PdfDocumentBuilder();
+        var font = builder.AddStandard14Font(Standard14Font.Helvetica);
+        var page = builder.AddPage(PageSize.A4);
+        page.AddText(multipleRows ? "Location:  Loc #:" : "Location Name  Loc #", 12, new PdfPoint(40, 750), font);
+        var prefix = multipleRows ? "• " : "";
+        page.AddText($"{prefix}{location}  {meter}", 12, new PdfPoint(40, 730), font);
+        var expected = $"{location} (meter {meter})";
+        if (multipleRows)
+        {
+            page.AddText("• Trunkline Holmwood  482116", 12, new PdfPoint(40, 710), font);
+            expected += " / Trunkline Holmwood (meter 482116)";
+        }
+
+        var now = new DateTimeOffset(2026, 7, 8, 12, 30, 0, TimeSpan.Zero);
+        using var client = new HttpClient(new ReplacementAttachmentHandler(new SampleBulletin(now), builder.Build()));
+        var notices = await new SabineNoticeSource(client).FetchAsync(now.AddDays(-3));
+
+        Assert.Equal(expected, notices.First().Location);
+    }
+
     [Fact]
     public async Task UnreadablePdfFailsWithNoticeContext()
     {
         var now = new DateTimeOffset(2026, 7, 8, 12, 30, 0, TimeSpan.Zero);
-        using var client = new HttpClient(new CorruptAttachmentHandler(new SampleBulletin(now)));
+        var bytes = "%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"u8.ToArray();
+        using var client = new HttpClient(new ReplacementAttachmentHandler(new SampleBulletin(now), bytes));
         var source = new SabineNoticeSource(client);
 
         var error = await Assert.ThrowsAsync<InvalidDataException>(() => source.FetchAsync(now.AddDays(-3)));
@@ -57,7 +87,7 @@ public sealed class SabineNoticeSourceTests
         Assert.IsType<PdfDocumentFormatException>(error.InnerException);
     }
 
-    private sealed class CorruptAttachmentHandler(HttpMessageHandler bulletin) : DelegatingHandler(bulletin)
+    private sealed class ReplacementAttachmentHandler(HttpMessageHandler bulletin, byte[] bytes) : DelegatingHandler(bulletin)
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -66,7 +96,7 @@ public sealed class SabineNoticeSourceTests
                 return base.SendAsync(request, cancellationToken);
             }
 
-            var content = new ByteArrayContent("%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"u8.ToArray());
+            var content = new ByteArrayContent(bytes);
             content.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
         }

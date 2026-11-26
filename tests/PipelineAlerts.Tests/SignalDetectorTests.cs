@@ -34,7 +34,21 @@ public class SignalDetectorTests
     }
 
     [Theory]
+    [InlineData("Lake Charles, Louisiana")]
+    [InlineData("Lake Charles, LA")]
+    public void RecognizesBothSpellingsInTheBodyOrLocation(string location)
+    {
+        var inBody = CreateNotice($"Outage at the compressor in {location}.");
+        var inLocation = CreateNotice("Compressor outage will stop deliveries.", location);
+
+        Assert.Equal("Louisiana", SignalDetector.Match(inBody, Now)?.Area);
+        Assert.Equal("Louisiana", SignalDetector.Match(inLocation, Now)?.Area);
+    }
+
+    [Theory]
     [InlineData("Current outage in Texas")]
+    [InlineData("An outage affected the LA control panel.")]
+    [InlineData("Following an outage, LA-12 is undergoing repairs.")]
     [InlineData("Routine update in Louisiana")]
     [InlineData("Dataoutage field in Louisiana")]
     public void RequiresBothAWholeKeywordAndAreaEvidence(string body)

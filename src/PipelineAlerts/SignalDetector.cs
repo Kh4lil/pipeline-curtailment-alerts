@@ -11,7 +11,7 @@ internal static class SignalDetector
     private static readonly Regex Keywords = new(@"\b(?:force\s+majeure|outages?|curtailments?)\b", MatchOptions);
 
     private static readonly Regex Areas = new(
-        @"\b(?:Louisiana|Henry\s+Hub|Sabine\s+Pipe\s*Line|Columbia\s+Gulf|Gulf\s*South|NGPL|Natural\s+Gas\s+Pipeline\s+Company\s+of\s+America)\b",
+        @"\b(?:Louisiana|Henry\s+Hub|Sabine\s+Pipe\s*Line|Columbia\s+Gulf|Gulf\s*South|NGPL|Natural\s+Gas\s+Pipeline\s+Company\s+of\s+America)\b|(?<=\p{L},)[ \t]*(?<postal>(?-i:LA))\b(?![-/]\w)",
         MatchOptions);
 
     private static readonly Regex Volumes = new(
@@ -33,7 +33,7 @@ internal static class SignalDetector
         return new TradingSignal(
             notice,
             Normalize(keyword.Value),
-            Normalize(area.Value),
+            area.Groups["postal"].Success ? "Louisiana" : Normalize(area.Value),
             volume.Success ? Normalize(volume.Value) : null);
     }
 
