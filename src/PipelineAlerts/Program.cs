@@ -7,13 +7,15 @@ if (args is ["--help"] or ["-h"])
     return 0;
 }
 
-if (args is not ([] or ["--demo"] or ["--dry-run"]))
+if (args is not ([] or ["--demo"] or ["--demo-synthetic"] or ["--dry-run"]))
 {
     PrintUsage();
     return 2;
 }
 
-bool demo = args is ["--demo"];
+bool historical = args is ["--demo"];
+bool synthetic = args is ["--demo-synthetic"];
+bool demo = historical || synthetic;
 Uri? webhook = demo ? new Uri("https://slack.example.invalid/demo") : null;
 if (args.Length == 0)
 {
@@ -32,12 +34,14 @@ if (args.Length == 0)
     }
 }
 
-var now = DateTimeOffset.UtcNow;
-using var bulletinClient = demo ? new HttpClient(new SampleBulletin(now)) : new HttpClient();
+var now = historical ? SampleBulletin.HistoricalAsOf : DateTimeOffset.UtcNow;
+using var bulletinClient = demo ? new HttpClient(new SampleBulletin(now, historical)) : new HttpClient();
 bulletinClient.Timeout = TimeSpan.FromSeconds(20);
 bulletinClient.DefaultRequestHeaders.UserAgent.ParseAdd("PipelineCurtailmentAlerts/1.0");
 
-Console.WriteLine($"Checking {SabineNoticeSource.PipelineName} ({(demo ? "sample replay" : "live bulletin")})...");
+var bulletinMode = historical ? $"historical replay as of {now.ToString("MMM d, yyyy", CultureInfo.InvariantCulture)}"
+    : synthetic ? "synthetic replay" : "live bulletin";
+Console.WriteLine($"Checking {SabineNoticeSource.PipelineName} ({bulletinMode})...");
 Console.WriteLine($"Delivery mode: {(demo ? "simulated Slack" : webhook is null ? "preview" : "Slack")}");
 
 IReadOnlyList<Notice> notices;
@@ -91,14 +95,17 @@ using var slackClient = new HttpClient(demo ? new DemoSlackReceiver() : new Http
 {
     Timeout = TimeSpan.FromSeconds(10)
 };
-var notifier = new SlackNotifier(slackClient, webhook, isDemo: demo);
+var notifier = new SlackNotifier(slackClient, webhook, isDemo: synthetic);
 int sent = 0;
 
 foreach (var signal in signals)
 {
     try
     {
-        await notifier.SendAsync(signal);
+        var alert = historical
+            ? signal with { Notice = signal.Notice with { Title = $"HISTORICAL REPLAY · {signal.Notice.Title}" } }
+            : signal;
+        await notifier.SendAsync(alert);
         sent++;
     }
     catch (InvalidOperationException ex)
@@ -115,8 +122,9 @@ return sent == signals.Length ? 0 : 1;
 
 static void PrintUsage()
 {
-    Console.WriteLine("Usage: dotnet run --project src/PipelineAlerts -- [--demo | --dry-run]");
-    Console.WriteLine("  --demo     Replay sample notices and show the outgoing Slack alert offline.");
-    Console.WriteLine("  --dry-run  Read the live bulletin and preview alerts in the console.");
-    Console.WriteLine("  Default    Read the live bulletin and send alerts if SLACK_WEBHOOK_URL is set.");
+    Console.WriteLine("Usage: dotnet run --project src/PipelineAlerts -- [--demo | --demo-synthetic | --dry-run]");
+    Console.WriteLine("  --demo            Replay historical Sabine notice 440 offline.");
+    Console.WriteLine("  --demo-synthetic  Replay synthetic notices offline.");
+    Console.WriteLine("  --dry-run         Read the live bulletin and preview alerts in the console.");
+    Console.WriteLine("  Default           Read the live bulletin and send alerts if SLACK_WEBHOOK_URL is set.");
 }

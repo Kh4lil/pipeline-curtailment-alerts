@@ -8,13 +8,14 @@ Install the [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.
 
 ```sh
 dotnet run --project src/PipelineAlerts -- --demo
+dotnet run --project src/PipelineAlerts -- --demo-synthetic
 dotnet run --project src/PipelineAlerts -- --dry-run
 dotnet test
 ```
 
-Start the review with `--demo`. Three recent sample notices go through the same parser, rules, and Slack sender as a live run. A local receiver prints the one matching Henry Hub alert, including 48,000 Dth/day extracted from a PDF, then simulates Slack's acknowledgement. Use `--dry-run` to see the live bulletin and its current match count in preview mode.
+Start the review with `--demo`. It replays Sabine notice 440 as of June 20, 2026. The parser reads a PDF excerpt from the notice and finds a planned outage with a 350,000 Dth/day delivery limit at Bridgeline East. The console prints the Slack message marked **HISTORICAL REPLAY**, with the original posting date and full notice link. [Original Sabine notice](https://www.gasnom.com/ip/SABINE/notice_details_new.cfm?id=440&type=3)
 
-After the first build, replay the demo offline with `dotnet run --no-build --project src/PipelineAlerts -- --demo`. The replay uses no Slack credentials.
+Use `--demo-synthetic` to see the original three sample notices and the matching Henry Hub alert. Both replays use a local Slack receiver and work offline after the first build. Add `--no-build` to run without rebuilding. Use `--dry-run` to check the live bulletin and see which alerts would qualify today.
 
 ## Send alerts to Slack
 

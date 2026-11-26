@@ -9,5 +9,6 @@
     <PackageReference Include="HtmlAgilityPack" Version="1.13.1" />
     <PackageReference Include="PdfPig" Version="0.1.16" />
     <InternalsVisibleTo Include="PipelineAlerts.Tests" />
+    <EmbeddedResource Include="Replay/notice-440-excerpt.pdf" LogicalName="SabineNotice440.pdf" />
   </ItemGroup>
 </Project>

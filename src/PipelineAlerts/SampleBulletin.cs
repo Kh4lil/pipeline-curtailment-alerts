@@ -7,13 +7,16 @@ using UglyToad.PdfPig.Writer;
 
 namespace PipelineAlerts;
 
-internal sealed class SampleBulletin(DateTimeOffset now) : HttpMessageHandler
+internal sealed class SampleBulletin(DateTimeOffset now, bool historical = false) : HttpMessageHandler
 {
+    internal static readonly DateTimeOffset HistoricalAsOf = new(2026, 6, 20, 18, 0, 0, TimeSpan.Zero);
+
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var uri = request.RequestUri!;
-        HttpContent? content = (Path.GetFileName(uri.AbsolutePath), uri.Query) switch
+        var route = (Path.GetFileName(uri.AbsolutePath), uri.Query);
+        HttpContent? content = historical ? HistoricalContent(route) : route switch
         {
             ("notices.cfm", "?type=1") => Listing(
                 Row(now.AddHours(-2), 9001, 1, "Operational Alert", "Henry Hub compressor restriction"),
@@ -35,6 +38,26 @@ internal sealed class SampleBulletin(DateTimeOffset now) : HttpMessageHandler
         return Task.FromResult(content is null
             ? new HttpResponseMessage(HttpStatusCode.NotFound)
             : new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+    }
+
+    private static HttpContent? HistoricalContent((string File, string Query) route) => route switch
+    {
+        ("notices.cfm", "?type=3") => Listing(Row(
+            new DateTimeOffset(2026, 6, 19, 13, 27, 34, TimeSpan.FromHours(-5)),
+            440, 3, "Maintenance<br>Other<br>Planned Service Outage", "Planned Service Outage SABINE JUNE 23-24")),
+        ("notices.cfm", "?type=1" or "?type=2" or "?type=4" or "?type=5") => Listing(),
+        ("notice_details_new.cfm", "?id=440&type=3") => Detail("<iframe src=\"getNoticeText.cfm?id=440\"></iframe>"),
+        ("getNoticeText.cfm", "?id=440") => HistoricalPdf(),
+        _ => null
+    };
+
+    private static StreamContent HistoricalPdf()
+    {
+        var pdf = typeof(SampleBulletin).Assembly.GetManifestResourceStream("SabineNotice440.pdf")
+            ?? throw new InvalidDataException("The PDF for Sabine notice 440 is missing from the replay.");
+        var content = new StreamContent(pdf);
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
+        return content;
     }
 
     private static StringContent Listing(params string[] rows) =>

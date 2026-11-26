@@ -11,6 +11,21 @@ namespace PipelineAlerts.Tests;
 
 public sealed class SabineNoticeSourceTests
 {
+    [Fact]
+    public async Task ReplaysSabineNotice440WithItsOriginalDateAndFullNoticeLink()
+    {
+        var asOf = SampleBulletin.HistoricalAsOf;
+        using var client = new HttpClient(new SampleBulletin(asOf, historical: true));
+
+        var notice = Assert.Single(await new SabineNoticeSource(client).FetchAsync(asOf.AddDays(-3), asOf));
+        var signal = Assert.IsType<TradingSignal>(SignalDetector.Match(notice, asOf));
+
+        Assert.Equal(new DateTimeOffset(2026, 6, 19, 13, 27, 34, TimeSpan.FromHours(-5)), notice.PostedAt);
+        Assert.Equal("Bridgeline East", notice.Location);
+        Assert.Equal("350,000 Dth/day", signal.Volume);
+        Assert.Equal("https://www.gasnom.com/ip/SABINE/notice_details_new.cfm?id=440&type=3", notice.Link.AbsoluteUri);
+    }
+
     [Theory]
     [InlineData(1, -6)]
     [InlineData(7, -5)]
