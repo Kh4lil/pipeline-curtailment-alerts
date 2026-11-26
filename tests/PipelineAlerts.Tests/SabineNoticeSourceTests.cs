@@ -12,6 +12,31 @@ namespace PipelineAlerts.Tests;
 public sealed class SabineNoticeSourceTests
 {
     [Fact]
+    public async Task UsesConfiguredBulletinForListingsDetailsAndAttachments()
+    {
+        var now = new DateTimeOffset(2026, 11, 26, 12, 0, 0, TimeSpan.Zero);
+        var bulletin = new Uri("https://example.invalid/custom/ebb/");
+        var requests = new List<Uri>();
+        using var client = new HttpClient(new BulletinOverride(new SampleBulletin(now), uri =>
+        {
+            requests.Add(uri);
+            return null;
+        }));
+
+        var notices = await new SabineNoticeSource(client, bulletin, "Example Pipeline")
+            .FetchAsync(now.AddDays(-3), now);
+
+        Assert.Equal(3, notices.Count);
+        Assert.All(requests, uri => Assert.True(bulletin.IsBaseOf(uri)));
+        Assert.Contains(requests, uri => uri.AbsolutePath.EndsWith("/getNoticeText.cfm", StringComparison.Ordinal));
+        Assert.All(notices, notice =>
+        {
+            Assert.Equal("Example Pipeline", notice.Pipeline);
+            Assert.True(bulletin.IsBaseOf(notice.Link));
+        });
+    }
+
+    [Fact]
     public async Task ReplaysSabineNotice440WithItsOriginalDateAndFullNoticeLink()
     {
         var asOf = SampleBulletin.HistoricalAsOf;

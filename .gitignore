@@ -6,3 +6,4 @@ TestResults/
 .env*
 !/.env.example
 .DS_Store
+/.pipeline-alert-deliveries

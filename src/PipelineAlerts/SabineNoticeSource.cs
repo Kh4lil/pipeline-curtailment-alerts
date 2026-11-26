@@ -8,12 +8,14 @@ using UglyToad.PdfPig.Exceptions;
 
 namespace PipelineAlerts;
 
-internal sealed class SabineNoticeSource(HttpClient httpClient)
+internal sealed class SabineNoticeSource(HttpClient httpClient, Uri? bulletinUrl = null, string? pipelineName = null)
 {
     internal const string PipelineName = "Sabine Pipe Line";
     internal static readonly TimeZoneInfo BulletinTimeZone = TimeZoneInfo.FindSystemTimeZoneById("America/Chicago");
+    internal static readonly Uri DefaultBulletin = new("https://www.gasnom.com/ip/SABINE/");
 
-    private static readonly Uri Bulletin = new("https://www.gasnom.com/ip/SABINE/");
+    private readonly Uri bulletin = bulletinUrl ?? DefaultBulletin;
+    private readonly string name = pipelineName ?? PipelineName;
     private static readonly (int Id, string Type)[] Categories =
     [
         (1, "Critical"),
@@ -31,11 +33,11 @@ internal sealed class SabineNoticeSource(HttpClient httpClient)
         var notices = new List<Notice>();
         foreach (var category in Categories)
         {
-            var listing = new Uri(Bulletin, $"notices.cfm?type={category.Id}");
+            var listing = new Uri(bulletin, $"notices.cfm?type={category.Id}");
             var document = Parse(await httpClient.GetStringAsync(listing, cancellationToken));
             var table = document.DocumentNode.SelectSingleNode(
                 "//tr[td/strong[normalize-space()='Notice Type']]/ancestor::table[1]")
-                ?? throw new InvalidDataException($"Sabine's {category.Type} listing did not contain a notice table.");
+                ?? throw new InvalidDataException($"The {category.Type} listing did not contain a notice table.");
 
             foreach (var row in table.SelectNodes(".//tr[td[@id='pDate']]") ?? Enumerable.Empty<HtmlNode>())
             {
@@ -43,7 +45,7 @@ internal sealed class SabineNoticeSource(HttpClient httpClient)
                 if (!DateTime.TryParseExact(date, "MMM d, yyyy h:mm:ss tt", CultureInfo.InvariantCulture,
                         DateTimeStyles.AllowWhiteSpaces, out var localTime))
                 {
-                    throw new InvalidDataException($"Unexpected posting date in Sabine's {category.Type} listing.");
+                    throw new InvalidDataException($"Unexpected posting date in the {category.Type} listing.");
                 }
 
                 var postedAt = new DateTimeOffset(localTime, BulletinTimeZone.GetUtcOffset(localTime));
@@ -53,14 +55,14 @@ internal sealed class SabineNoticeSource(HttpClient httpClient)
                 }
 
                 var subject = row.SelectSingleNode("td/a[@class='trview']")
-                    ?? throw new InvalidDataException("A Sabine notice is missing its subject link.");
+                    ?? throw new InvalidDataException("A notice is missing its subject link.");
                 var title = ReadText(subject);
                 var link = NoticeLink(subject.GetAttributeValue("href", ""), "notice_details_new.cfm");
                 var body = await ReadBodyAsync(link, cancellationToken);
                 var tags = ReadText(row.SelectSingleNode("td[1]")!)
                     .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                 var type = string.Join(" / ", tags.Prepend(category.Type).Distinct(StringComparer.OrdinalIgnoreCase));
-                notices.Add(new Notice(PipelineName, type, title, postedAt, ReadLocation(title, body), link, body));
+                notices.Add(new Notice(name, type, title, postedAt, ReadLocation(title, body), link, body));
             }
         }
 
@@ -72,7 +74,7 @@ internal sealed class SabineNoticeSource(HttpClient httpClient)
         var detail = Parse(await httpClient.GetStringAsync(notice, cancellationToken));
         var body = detail.DocumentNode.SelectSingleNode(
             "//tr[td[normalize-space()='Notice Text']]/following-sibling::tr[1]/td")
-            ?? throw new InvalidDataException($"Sabine notice {notice.Query} did not contain a notice body.");
+            ?? throw new InvalidDataException($"Notice {notice.Query} did not contain a notice body.");
 
         if (body.SelectSingleNode(".//iframe") is not { } frame)
         {
@@ -85,7 +87,7 @@ internal sealed class SabineNoticeSource(HttpClient httpClient)
         response.EnsureSuccessStatusCode();
         if (response.Content.Headers.ContentType?.MediaType != "application/pdf")
         {
-            throw new InvalidDataException($"Sabine notice {notice.Query} did not return its expected PDF attachment.");
+            throw new InvalidDataException($"Notice {notice.Query} did not return its expected PDF attachment.");
         }
 
         var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
@@ -96,7 +98,7 @@ internal sealed class SabineNoticeSource(HttpClient httpClient)
         }
         catch (Exception ex) when (ex is PdfDocumentFormatException or PdfDocumentEncryptedException)
         {
-            throw new InvalidDataException($"Sabine notice {notice.Query} contains an unreadable PDF attachment.", ex);
+            throw new InvalidDataException($"Notice {notice.Query} contains an unreadable PDF attachment.", ex);
         }
     }
 
@@ -162,16 +164,16 @@ internal sealed class SabineNoticeSource(HttpClient httpClient)
             return $"{location} (meter {row.Groups["meter"].Captures[index].Value})";
         })));
 
-    private static Uri NoticeLink(string href, string file)
+    private Uri NoticeLink(string href, string file)
     {
-        if (Uri.TryCreate(Bulletin, HtmlEntity.DeEntitize(href), out var uri)
-            && uri.Scheme == Bulletin.Scheme && uri.Authority == Bulletin.Authority
-            && uri.AbsolutePath == Bulletin.AbsolutePath + file)
+        if (Uri.TryCreate(bulletin, HtmlEntity.DeEntitize(href), out var uri)
+            && uri.Scheme == bulletin.Scheme && uri.Authority == bulletin.Authority
+            && uri.AbsolutePath == bulletin.AbsolutePath + file)
         {
             return uri;
         }
 
-        throw new InvalidDataException($"Sabine's notice did not link to its expected {file} page.");
+        throw new InvalidDataException($"The notice did not link to its expected {file} page.");
     }
 
     private static HtmlDocument Parse(string html)
