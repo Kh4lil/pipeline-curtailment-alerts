@@ -25,6 +25,7 @@ internal sealed class SabineNoticeSource(HttpClient httpClient)
 
     internal async Task<IReadOnlyList<Notice>> FetchAsync(
         DateTimeOffset since,
+        DateTimeOffset until,
         CancellationToken cancellationToken = default)
     {
         var notices = new List<Notice>();
@@ -46,7 +47,7 @@ internal sealed class SabineNoticeSource(HttpClient httpClient)
                 }
 
                 var postedAt = new DateTimeOffset(localTime, BulletinTimeZone.GetUtcOffset(localTime));
-                if (postedAt < since)
+                if (postedAt < since || postedAt > until)
                 {
                     continue;
                 }
@@ -123,6 +124,13 @@ internal sealed class SabineNoticeSource(HttpClient httpClient)
                 var location = Regex.Replace(name.Value.Trim(), @"[ \t]+", " ");
                 return $"{location} (meter {meters[index].Value})";
             }));
+        }
+
+        var proseLocation = Regex.Match(body,
+            @"(?i:\b(?:in|at|near))[ \t]+(?<location>\p{Lu}[\p{L}.'’-]*(?:[ \t]+\p{Lu}[\p{L}.'’-]*){0,3},[ \t]*(?:LA|TX|(?i:Louisiana|Texas)))\b(?![-/]\w)");
+        if (proseLocation.Success)
+        {
+            return Regex.Replace(proseLocation.Groups["location"].Value, @"[ \t]+", " ");
         }
 
         var namedPlace = Regex.Match(title + "\n" + body,

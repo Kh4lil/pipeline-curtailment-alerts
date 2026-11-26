@@ -19,7 +19,7 @@ public sealed class SabineNoticeSourceTests
         var now = new DateTimeOffset(2026, month, 8, 12, 30, 0, TimeSpan.Zero);
         using var client = new HttpClient(new SampleBulletin(now));
 
-        var notices = await new SabineNoticeSource(client).FetchAsync(now.AddDays(-3));
+        var notices = await new SabineNoticeSource(client).FetchAsync(now.AddDays(-3), now);
 
         Assert.Collection(notices,
             critical =>
@@ -66,10 +66,55 @@ public sealed class SabineNoticeSourceTests
         }
 
         var now = new DateTimeOffset(2026, 7, 8, 12, 30, 0, TimeSpan.Zero);
-        using var client = new HttpClient(new ReplacementAttachmentHandler(new SampleBulletin(now), builder.Build()));
-        var notices = await new SabineNoticeSource(client).FetchAsync(now.AddDays(-3));
+        using var client = new HttpClient(new BulletinOverride(new SampleBulletin(now),
+            uri => uri.Query == "?id=9001" ? Pdf(builder.Build()) : null));
+        var notices = await new SabineNoticeSource(client).FetchAsync(now.AddDays(-3), now);
 
         Assert.Equal(expected, notices.First().Location);
+    }
+
+    [Fact]
+    public async Task SkipsFutureAndStaleDetailsAndIncludesBothWindowEndpoints()
+    {
+        var now = new DateTimeOffset(2026, 11, 25, 18, 0, 0, TimeSpan.Zero);
+        var since = now.AddDays(-3);
+        var rows = new[] { (701, since), (702, since.AddSeconds(-1)), (703, now), (704, now.AddSeconds(1)) }
+            .Select(row =>
+            {
+                var (id, time) = row;
+                var local = TimeZoneInfo.ConvertTime(time, SabineNoticeSource.BulletinTimeZone);
+                return FormattableString.Invariant($"""
+                    <tr><td>Operational Alert</td><td id="pDate">{local:MMM d, yyyy h:mm:ss tt}</td>
+                    <td><a class="trview" href="notice_details_new.cfm?id={id}&amp;type=1">Notice {id}</a></td></tr>
+                    """);
+            });
+        using var client = new HttpClient(new BulletinOverride(new SampleBulletin(now), uri => uri.Query switch
+        {
+            "?type=1" => Html($"<table><tr><td><strong>Notice Type</strong></td></tr>{string.Concat(rows)}</table>"),
+            "?id=701&type=1" or "?id=703&type=1" => Detail("Affected segment: Henry Hub"),
+            "?id=702&type=1" or "?id=704&type=1" => Html("<table></table>"),
+            _ => null
+        }));
+
+        var notices = await new SabineNoticeSource(client).FetchAsync(since, now);
+
+        Assert.Equal(new[] { now, since },
+            notices.Where(notice => notice.Type.StartsWith("Critical", StringComparison.Ordinal)).Select(notice => notice.PostedAt));
+    }
+
+    [Fact]
+    public async Task ReadsCityAndStateFromNoticeProse()
+    {
+        var now = new DateTimeOffset(2026, 11, 25, 18, 0, 0, TimeSpan.Zero);
+        using var client = new HttpClient(new BulletinOverride(new SampleBulletin(now), uri =>
+            uri.Query == "?id=9002&type=2"
+                ? Detail("An outage at the Gillis Compressor Station in Starks, LA reduced deliveries by 12,000 Dth/day.")
+                : null));
+
+        var notices = await new SabineNoticeSource(client).FetchAsync(now.AddDays(-3), now);
+
+        var notice = Assert.Single(notices, notice => notice.Link.Query == "?id=9002&type=2");
+        Assert.Equal("Starks, LA", notice.Location);
     }
 
     [Fact]
@@ -77,28 +122,38 @@ public sealed class SabineNoticeSourceTests
     {
         var now = new DateTimeOffset(2026, 7, 8, 12, 30, 0, TimeSpan.Zero);
         var bytes = "%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"u8.ToArray();
-        using var client = new HttpClient(new ReplacementAttachmentHandler(new SampleBulletin(now), bytes));
+        using var client = new HttpClient(new BulletinOverride(new SampleBulletin(now),
+            uri => uri.Query == "?id=9001" ? Pdf(bytes) : null));
         var source = new SabineNoticeSource(client);
 
-        var error = await Assert.ThrowsAsync<InvalidDataException>(() => source.FetchAsync(now.AddDays(-3)));
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => source.FetchAsync(now.AddDays(-3), now));
 
         Assert.Contains("?id=9001&type=1", error.Message);
         Assert.Contains("unreadable PDF", error.Message);
         Assert.IsType<PdfDocumentFormatException>(error.InnerException);
     }
 
-    private sealed class ReplacementAttachmentHandler(HttpMessageHandler bulletin, byte[] bytes) : DelegatingHandler(bulletin)
+    private static HttpResponseMessage Html(string html) => new(HttpStatusCode.OK)
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            if (request.RequestUri?.Query != "?id=9001")
-            {
-                return base.SendAsync(request, cancellationToken);
-            }
+        Content = new StringContent(html)
+    };
 
-            var content = new ByteArrayContent(bytes);
-            content.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
-        }
+    private static HttpResponseMessage Detail(string body) =>
+        Html($"<table><tr><td>Notice Text</td></tr><tr><td>{body}</td></tr></table>");
+
+    private static HttpResponseMessage Pdf(byte[] bytes)
+    {
+        var content = new ByteArrayContent(bytes);
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
+        return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
+    }
+
+    private sealed class BulletinOverride(HttpMessageHandler bulletin, Func<Uri, HttpResponseMessage?> respond)
+        : DelegatingHandler(bulletin)
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            respond(request.RequestUri!) is { } response
+                ? Task.FromResult(response)
+                : base.SendAsync(request, cancellationToken);
     }
 }

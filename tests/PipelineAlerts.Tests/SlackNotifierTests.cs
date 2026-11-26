@@ -56,7 +56,7 @@ public class SlackNotifierTests
     {
         var now = new DateTimeOffset(2026, 11, 20, 18, 0, 0, TimeSpan.Zero);
         using var bulletinClient = new HttpClient(new SampleBulletin(now));
-        var notices = await new SabineNoticeSource(bulletinClient).FetchAsync(now - SignalDetector.Lookback);
+        var notices = await new SabineNoticeSource(bulletinClient).FetchAsync(now - SignalDetector.Lookback, now);
 
         Assert.Equal(3, notices.Count);
         var signal = Assert.Single(notices.Select(notice => SignalDetector.Match(notice, now)).OfType<TradingSignal>());

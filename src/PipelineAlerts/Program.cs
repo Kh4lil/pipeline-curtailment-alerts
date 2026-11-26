@@ -43,7 +43,7 @@ Console.WriteLine($"Delivery mode: {(demo ? "simulated Slack" : webhook is null 
 IReadOnlyList<Notice> notices;
 try
 {
-    notices = await new SabineNoticeSource(bulletinClient).FetchAsync(now - SignalDetector.Lookback);
+    notices = await new SabineNoticeSource(bulletinClient).FetchAsync(now - SignalDetector.Lookback, now);
 }
 catch (HttpRequestException ex)
 {

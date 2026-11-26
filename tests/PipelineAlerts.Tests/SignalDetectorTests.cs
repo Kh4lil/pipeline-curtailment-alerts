@@ -50,10 +50,52 @@ public class SignalDetectorTests
     [InlineData("An outage affected the LA control panel.")]
     [InlineData("Following an outage, LA-12 is undergoing repairs.")]
     [InlineData("Routine update in Louisiana")]
+    [InlineData("No outage is expected at Henry Hub. Normal flow continues.")]
+    [InlineData("There is no curtailment at Henry Hub.")]
+    [InlineData("No force majeure applies in Louisiana.")]
     [InlineData("Dataoutage field in Louisiana")]
-    public void RequiresBothAWholeKeywordAndAreaEvidence(string body)
+    public void RequiresAnAffirmativeWholeKeywordAndAreaEvidence(string body)
     {
         Assert.Null(SignalDetector.Match(CreateNotice(body), Now));
+    }
+
+    [Fact]
+    public void FindsAnAffirmativeEventAfterANegatedKeyword()
+    {
+        var notice = CreateNotice("No outage is expected at Henry Hub, but a curtailment was confirmed.");
+
+        Assert.Equal("curtailment", SignalDetector.Match(notice, Now)?.Keyword);
+    }
+
+    [Fact]
+    public void DoesNotTreatTheIssuerHeadingAsEvidenceForATexasOnlyEvent()
+    {
+        var notice = CreateNotice(
+            "SABINE PIPE LINE LLC\nAffected segment: Beaumont, Texas\nRepairs apply only to Texas operations.",
+            "Beaumont, Texas") with { Title = "Outage report" };
+
+        Assert.Null(SignalDetector.Match(notice, Now));
+    }
+
+    [Fact]
+    public void KeepsThePipelineNameWhenItIsTheAffectedLocation()
+    {
+        var notice = CreateNotice("A compressor outage was confirmed.", "Sabine Pipe Line");
+
+        Assert.Equal("Sabine Pipe Line", SignalDetector.Match(notice, Now)?.Area);
+    }
+
+    [Fact]
+    public void UsesBridgelineEastAsEvidenceForAPlannedOutage()
+    {
+        var notice = CreateNotice(
+            "SABINE PIPE LINE LLC\r\nDeliveries to Bridgeline East will be restricted to 350,000 Dth/day.",
+            "Bridgeline East") with { Title = "Planned Service Outage SABINE JUNE 23-24" };
+
+        var signal = Assert.IsType<TradingSignal>(SignalDetector.Match(notice, Now));
+        Assert.Equal("Outage", signal.Keyword);
+        Assert.Equal("Bridgeline East", signal.Area);
+        Assert.Equal("350,000 Dth/day", signal.Volume);
     }
 
     [Theory]
